@@ -1,0 +1,2 @@
+ I have raspberrypi connected to local wifi, I want to create a script that will run every 15 mins(configurable) and check my internet speed. if it is
+  below 30 mbps, it should send an email to my gmail or whatsapp message(I will configure twillio later)

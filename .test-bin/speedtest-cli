@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+speed="${MOCK_SPEED:-50.00}"
+echo "Ping: 12.3 ms"
+echo "Download: ${speed} Mbit/s"
+echo "Upload: 8.00 Mbit/s"

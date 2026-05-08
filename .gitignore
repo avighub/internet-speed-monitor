@@ -1,0 +1,4 @@
+.env
+logs/*.csv
+logs/*.log
+state/*.state
