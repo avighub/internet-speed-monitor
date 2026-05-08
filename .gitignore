@@ -2,3 +2,4 @@
 logs/*.csv
 logs/*.log
 state/*.state
+.test-bin/
