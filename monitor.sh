@@ -94,40 +94,57 @@ send_email() {
 get_download_speed_mbps() {
   local output
   local speed
+  local fallback_output
+  local bandwidth_bytes
+  local error_parts=""
 
-  if ! command -v speedtest-cli >/dev/null 2>&1; then
-    echo "ERROR:speedtest-cli not installed"
-    return 1
-  fi
-
-  if ! output="$(timeout "${SPEEDTEST_TIMEOUT_SECONDS}" speedtest-cli --simple 2>&1)"; then
-    echo "ERROR:${output}"
-    return 1
-  fi
-
-  speed="$(awk '
-    /Download:/ {
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[0-9]+(\.[0-9]+)?$/) {
-          print $i
-          exit
+  if command -v speedtest-cli >/dev/null 2>&1; then
+    if output="$(timeout "${SPEEDTEST_TIMEOUT_SECONDS}" speedtest-cli --simple 2>&1)"; then
+      speed="$(awk '
+        /Download:/ {
+          for (i = 1; i <= NF; i++) {
+            if ($i ~ /^[0-9]+(\.[0-9]+)?$/) {
+              print $i
+              exit
+            }
+          }
         }
-      }
-    }
-  ' <<< "${output}")"
+      ' <<< "${output}")"
 
-  if [[ -z "${speed}" ]]; then
-    echo "ERROR:unable to parse download speed from speedtest-cli output"
-    return 1
+      if [[ -n "${speed}" && "${speed}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "${speed}"
+        return 0
+      fi
+
+      error_parts="${error_parts} speedtest-cli parse failed."
+    else
+      error_parts="${error_parts} speedtest-cli failed: ${output}."
+    fi
+  else
+    error_parts="${error_parts} speedtest-cli not installed."
   fi
 
-  if ! [[ "${speed}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    echo "ERROR:parsed non-numeric speed value: ${speed}"
-    return 1
+  # Fallback to official Ookla speedtest CLI when speedtest-cli fails (common 403 issue).
+  if command -v speedtest >/dev/null 2>&1; then
+    if fallback_output="$(timeout "${SPEEDTEST_TIMEOUT_SECONDS}" speedtest --accept-license --accept-gdpr --format=json 2>&1)"; then
+      bandwidth_bytes="$(awk -F: '/"bandwidth"/ {gsub(/[^0-9.]/, "", $2); print $2; exit}' <<< "${fallback_output}")"
+
+      if [[ -n "${bandwidth_bytes}" && "${bandwidth_bytes}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        speed="$(awk -v b="${bandwidth_bytes}" 'BEGIN {printf "%.2f", (b * 8) / 1000000}')"
+        echo "${speed}"
+        return 0
+      fi
+
+      error_parts="${error_parts} speedtest parse failed."
+    else
+      error_parts="${error_parts} speedtest failed: ${fallback_output}."
+    fi
+  else
+    error_parts="${error_parts} speedtest not installed."
   fi
 
-  echo "${speed}"
-  return 0
+  echo "ERROR:unable to retrieve speed from available tools.${error_parts}"
+  return 1
 }
 
 read_last_alert_ts() {
@@ -370,6 +387,8 @@ Episode duration: ${duration_minutes} minutes"; then
   else
     status="error"
     error_msg="${speed#ERROR:}"
+    error_msg="$(tr '\n' ' ' <<< "${error_msg}" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+    error_msg="${error_msg//,/;}"
     echo "${now_iso},,${SPEED_THRESHOLD_MBPS},${status},${error_msg}" >> "${SAMPLES_LOG}"
     log_msg "ERROR,speedtest failed error=${error_msg}"
     exit 1

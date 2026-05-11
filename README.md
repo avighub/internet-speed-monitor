@@ -19,6 +19,15 @@ sudo apt update
 sudo apt install -y speedtest-cli curl coreutils
 ```
 
+Optional but recommended fallback (official Ookla CLI):
+
+```bash
+sudo apt install -y speedtest
+```
+
+If `speedtest` package is unavailable on your distro, install from Ookla docs:
+https://www.speedtest.net/apps/cli
+
 ## Setup
 1. Copy secrets template and edit values:
 
@@ -139,5 +148,6 @@ Generate summary:
 
 ## Notes
 - If `speedtest-cli` command fails, failures are logged in `samples.csv` and `monitor.log`.
+- `speedtest-cli` may return `HTTP Error 403` on some networks; the script automatically falls back to the official `speedtest` CLI when installed.
 - Daily summary is updated when a downtime episode ends.
 - Keep `.env` private.
