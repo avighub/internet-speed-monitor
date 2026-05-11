@@ -72,14 +72,15 @@ send_email() {
   payload="$(printf "Date: %s\r\nMessage-ID: %s\r\nFrom: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s" \
     "${date_header}" "${msg_id}" "${ALERT_FROM}" "${ALERT_TO}" "${subject}" "${body}")"
 
-  if ! curl --silent --show-error --fail \
+  local curl_output
+  if ! curl_output="$(curl --silent --show-error \
     --url "smtp://${SMTP_HOST}:${SMTP_PORT}" \
-    --ssl-reqd \
+    --ssl \
     --mail-from "${ALERT_FROM}" \
     --mail-rcpt "${ALERT_TO}" \
     --user "${SMTP_USER}:${SMTP_PASS}" \
-    --upload-file - <<< "${payload}" >/dev/null; then
-    log_msg "ERROR,failed to send email alert"
+    --upload-file - <<< "${payload}" 2>&1)"; then
+    log_msg "ERROR,failed to send email: ${curl_output}"
     return 1
   fi
 
