@@ -24,6 +24,7 @@ SPEEDTEST_TIMEOUT_SECONDS="${SPEEDTEST_TIMEOUT_SECONDS:-90}"
 LOG_DIR="${LOG_DIR:-logs}"
 STATE_DIR="${STATE_DIR:-state}"
 SEND_RECOVERY_EMAIL="${SEND_RECOVERY_EMAIL:-1}"
+REPEAT_ALERT_WHILE_LOW="${REPEAT_ALERT_WHILE_LOW:-0}"
 
 LOG_DIR="${SCRIPT_DIR}/${LOG_DIR}"
 STATE_DIR="${SCRIPT_DIR}/${STATE_DIR}"
@@ -315,7 +316,26 @@ Host: $(hostname)"; then
             log_msg "INFO,active episode alert pending but cooldown active"
           fi
         else
-          log_msg "INFO,below-threshold and episode already active; no duplicate alert"
+          if [[ "${REPEAT_ALERT_WHILE_LOW}" == "1" ]]; then
+            if can_send_alert "${now_ts}"; then
+              if send_email \
+                "[Internet Alert] Speed still below ${SPEED_THRESHOLD_MBPS} Mbps" \
+                "Time: ${now_iso}
+Download speed: ${speed} Mbps
+Threshold: ${SPEED_THRESHOLD_MBPS} Mbps
+Host: $(hostname)
+Status: ongoing low-speed episode"; then
+                write_last_alert_ts "${now_ts}"
+                log_msg "INFO,repeat alert sent for ongoing low-speed episode"
+              else
+                log_msg "ERROR,repeat alert send failed during ongoing episode"
+              fi
+            else
+              log_msg "INFO,ongoing episode repeat alert suppressed by cooldown"
+            fi
+          else
+            log_msg "INFO,below-threshold and episode already active; no duplicate alert"
+          fi
         fi
 
         update_episode "${speed}"
