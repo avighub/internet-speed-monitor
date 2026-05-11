@@ -65,7 +65,12 @@ send_email() {
   fi
 
   local payload
-  payload="From: ${ALERT_FROM}\r\nTo: ${ALERT_TO}\r\nSubject: ${subject}\r\n\r\n${body}"
+  local msg_id date_header
+  msg_id="<$(date +%s).$$@$(hostname)>"
+  date_header="$(date -R)"
+
+  payload="$(printf "Date: %s\r\nMessage-ID: %s\r\nFrom: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s" \
+    "${date_header}" "${msg_id}" "${ALERT_FROM}" "${ALERT_TO}" "${subject}" "${body}")"
 
   if ! curl --silent --show-error --fail \
     --url "smtp://${SMTP_HOST}:${SMTP_PORT}" \
