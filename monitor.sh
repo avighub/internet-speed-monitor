@@ -70,15 +70,18 @@ send_email() {
   escaped_subject="$(printf '%s' "${subject}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   json_body="{\"from\":\"${ALERT_FROM}\",\"to\":[\"${ALERT_TO}\"],\"subject\":\"${escaped_subject}\",\"text\":\"${escaped_body}\"}"
 
-  http_code="$(curl --silent --show-error --write-out "%{http_code}" --output /tmp/resend_response.json \
+  if ! http_code="$(curl --silent --show-error --write-out "%{http_code}" --output /tmp/resend_response.json \
     --request POST https://api.resend.com/emails \
     --header "Authorization: Bearer ${RESEND_API_KEY}" \
     --header "Content-Type: application/json" \
-    --data "${json_body}" 2>&1)"
+    --data "${json_body}" 2>&1)"; then
+    log_msg "ERROR,resend request failed: ${http_code}"
+    return 1
+  fi
 
   response="$(cat /tmp/resend_response.json 2>/dev/null || echo '')"
 
-  if [[ "${http_code}" != "200" ]]; then
+  if [[ "${http_code}" != "200" && "${http_code}" != "202" ]]; then
     log_msg "ERROR,resend API failed http_code=${http_code} response=${response}"
     return 1
   fi
@@ -252,20 +255,25 @@ main() {
       if [[ ! -f "${CURRENT_EPISODE_FILE}" ]]; then
         start_episode "${now_iso}" "${speed}"
         if can_send_alert "${now_ts}"; then
-          send_email \
+          if send_email \
             "[Internet Alert] Speed below ${SPEED_THRESHOLD_MBPS} Mbps" \
             "Time: ${now_iso}
 Download speed: ${speed} Mbps
 Threshold: ${SPEED_THRESHOLD_MBPS} Mbps
-Host: $(hostname)"
-          write_last_alert_ts "${now_ts}"
+Host: $(hostname)"; then
+            write_last_alert_ts "${now_ts}"
+          else
+            log_msg "ERROR,alert email send failed on episode start"
+          fi
         else
           log_msg "INFO,below-threshold but cooldown active"
         fi
       else
+        log_msg "INFO,below-threshold and episode already active; no duplicate alert"
         update_episode "${speed}"
       fi
     else
+      log_msg "INFO,speed above threshold; no alert needed"
       if [[ -f "${CURRENT_EPISODE_FILE}" ]]; then
         # shellcheck disable=SC1090
         source "${CURRENT_EPISODE_FILE}"
@@ -279,13 +287,15 @@ Host: $(hostname)"
         update_daily_summary "${day_for_summary}" "${duration_minutes}" "${min}"
 
         if [[ "${SEND_RECOVERY_EMAIL}" == "1" ]]; then
-          send_email \
+          if ! send_email \
             "[Internet Recovery] Speed back above threshold" \
             "Time: ${now_iso}
 Download speed: ${speed} Mbps
 Threshold: ${SPEED_THRESHOLD_MBPS} Mbps
 Host: $(hostname)
-Episode duration: ${duration_minutes} minutes"
+Episode duration: ${duration_minutes} minutes"; then
+            log_msg "ERROR,recovery email send failed"
+          fi
         fi
       fi
     fi
