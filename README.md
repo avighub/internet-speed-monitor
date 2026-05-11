@@ -48,11 +48,16 @@ chmod +x monitor.sh report.sh setup-cron.sh
 ./setup-cron.sh
 ```
 
-## Gmail App Password
-Use a Google App Password (not your account password):
-- Enable 2-Step Verification on your Google account
-- Generate App Password from Google Account security settings
-- Put it in `.env` as `SMTP_PASS`
+## Resend API Setup
+Email alerts are sent via [Resend](https://resend.com) — reliable transactional email with a free tier (3,000 emails/month).
+
+1. Sign up at [resend.com](https://resend.com) (free, no credit card)
+2. Verify a sending address or domain under **Domains**
+3. Create an API key under **API Keys**
+4. Set in `.env`:
+   - `RESEND_API_KEY` — your API key (starts with `re_`)
+   - `ALERT_FROM` — your verified sender address
+   - `ALERT_TO` — recipient (your Gmail or any address)
 
 ## Logs
 - `logs/samples.csv`: per-run speed checks

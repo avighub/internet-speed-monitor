@@ -64,27 +64,26 @@ send_email() {
     return 1
   fi
 
-  local payload
-  local msg_id date_header
-  msg_id="<$(date +%s).$$@$(hostname)>"
-  date_header="$(date -R)"
+  local json_body response http_code
+  local escaped_body escaped_subject
+  escaped_body="$(printf '%s' "${body}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//')"
+  escaped_subject="$(printf '%s' "${subject}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  json_body="{\"from\":\"${ALERT_FROM}\",\"to\":[\"${ALERT_TO}\"],\"subject\":\"${escaped_subject}\",\"text\":\"${escaped_body}\"}"
 
-  payload="$(printf "Date: %s\r\nMessage-ID: %s\r\nFrom: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s" \
-    "${date_header}" "${msg_id}" "${ALERT_FROM}" "${ALERT_TO}" "${subject}" "${body}")"
+  http_code="$(curl --silent --show-error --write-out "%{http_code}" --output /tmp/resend_response.json \
+    --request POST https://api.resend.com/emails \
+    --header "Authorization: Bearer ${RESEND_API_KEY}" \
+    --header "Content-Type: application/json" \
+    --data "${json_body}" 2>&1)"
 
-  local curl_output
-  if ! curl_output="$(curl --silent --show-error \
-    --url "smtp://${SMTP_HOST}:${SMTP_PORT}" \
-    --ssl \
-    --mail-from "${ALERT_FROM}" \
-    --mail-rcpt "${ALERT_TO}" \
-    --user "${SMTP_USER}:${SMTP_PASS}" \
-    --upload-file - <<< "${payload}" 2>&1)"; then
-    log_msg "ERROR,failed to send email: ${curl_output}"
+  response="$(cat /tmp/resend_response.json 2>/dev/null || echo '')"
+
+  if [[ "${http_code}" != "200" ]]; then
+    log_msg "ERROR,resend API failed http_code=${http_code} response=${response}"
     return 1
   fi
 
-  log_msg "INFO,email sent subject=${subject}"
+  log_msg "INFO,email sent via Resend subject=${subject}"
   return 0
 }
 
