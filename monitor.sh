@@ -159,6 +159,7 @@ start=${ts_iso}
 min=${speed}
 sum=${speed}
 count=1
+alerted=0
 EOF
 }
 
@@ -170,6 +171,9 @@ update_episode() {
 
   # shellcheck disable=SC1090
   source "${CURRENT_EPISODE_FILE}"
+
+  # Backward compatibility for episodes created before alerted flag existed.
+  alerted="${alerted:-0}"
 
   if float_lt "${speed}" "${min}"; then
     min="${speed}"
@@ -183,6 +187,25 @@ start=${start}
 min=${min}
 sum=${sum}
 count=${count}
+alerted=${alerted}
+EOF
+}
+
+mark_episode_alerted() {
+  if [[ ! -f "${CURRENT_EPISODE_FILE}" ]]; then
+    return
+  fi
+
+  # shellcheck disable=SC1090
+  source "${CURRENT_EPISODE_FILE}"
+  alerted=1
+
+  cat > "${CURRENT_EPISODE_FILE}" <<EOF
+start=${start}
+min=${min}
+sum=${sum}
+count=${count}
+alerted=${alerted}
 EOF
 }
 
@@ -262,6 +285,7 @@ Download speed: ${speed} Mbps
 Threshold: ${SPEED_THRESHOLD_MBPS} Mbps
 Host: $(hostname)"; then
             write_last_alert_ts "${now_ts}"
+            mark_episode_alerted
           else
             log_msg "ERROR,alert email send failed on episode start"
           fi
@@ -269,7 +293,31 @@ Host: $(hostname)"; then
           log_msg "INFO,below-threshold but cooldown active"
         fi
       else
-        log_msg "INFO,below-threshold and episode already active; no duplicate alert"
+        # shellcheck disable=SC1090
+        source "${CURRENT_EPISODE_FILE}"
+        alerted="${alerted:-0}"
+
+        if [[ "${alerted}" == "0" ]]; then
+          if can_send_alert "${now_ts}"; then
+            if send_email \
+              "[Internet Alert] Speed below ${SPEED_THRESHOLD_MBPS} Mbps" \
+              "Time: ${now_iso}
+Download speed: ${speed} Mbps
+Threshold: ${SPEED_THRESHOLD_MBPS} Mbps
+Host: $(hostname)"; then
+              write_last_alert_ts "${now_ts}"
+              mark_episode_alerted
+              log_msg "INFO,alert email sent during active episode retry"
+            else
+              log_msg "ERROR,alert email retry failed during active episode"
+            fi
+          else
+            log_msg "INFO,active episode alert pending but cooldown active"
+          fi
+        else
+          log_msg "INFO,below-threshold and episode already active; no duplicate alert"
+        fi
+
         update_episode "${speed}"
       fi
     else
